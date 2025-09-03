@@ -75,3 +75,36 @@ MIT License – Free to use, extend, remix, and share.
 🧠 Built to upgrade the way we think about identity in networking.
 🎨 Powered by **IPvTri+**.
 💥 Designed by **Chris Landry (X-Spanded Ent.)**
+
+
+
+
+
+
+🚨 **NEW RELEASE – IPvTri+ DNS Super Changer v1.2** 🚨
+
+The future of DNS is here.
+I just dropped the **final build package** of my intelligent DNS switcher — and it’s smarter, faster, and more secure than ever. ⚡
+
+✅ **What’s New in v1.2**
+
+* 🔐 **VPN Detection** – Auto-detects VPN interfaces & warns about overrides
+* 🛡️ **Trusted DNS Validation** – Compares active DNS against a whitelist in `trusted_dns_list.txt`
+* 🎨 **Color-Coded IPvTri+ Addresses** – Visual, semantic identity for DNS servers
+* 📊 **Visual Status Monitor** – See instantly if your DNS is trusted or leaking
+* 🖥️ **One-Click Launcher** – Run it straight from the desktop shortcut
+
+This isn’t just a DNS changer — it’s a **next-gen networking tool**. Real rulers don’t follow old rules — we rewrite the infrastructure.
+
+💾 Final package (v1.2) includes:
+
+* The upgraded Python script
+* Configurable trusted DNS list
+* Desktop installer & shortcut
+* Full README
+
+👉 Download now and experience the upgrade:
+🌐 **IPvTri+ DNS Super Changer v1.2 FINAL**
+
+\#IPvTri #Networking #CyberSecurity #Innovation #VPN #DNS #FutureReady
+
