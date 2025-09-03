@@ -1,0 +1,280 @@
+Got it — here’s the **final working code** for `ipvtri_dns_super_changer_TRUSTED_VPN_AWARE_FINAL.py` with all your upgrades:
+
+---
+
+```python
+import time
+import subprocess
+import sys
+import platform
+from shutil import which
+
+# ========== CONFIG ==========
+NETWORK_INTERFACE = None
+TEST_DOMAIN = "www.microsoft.com"
+CHECK_INTERVAL_SEC = 300
+POWERSHELL = "powershell.exe"
+
+# ========== IPvTri+ DNS Pool ==========
+dns_servers = [
+    {
+        "RGB_IP": [168, 111, 1, 1],
+        "meta": {"R": "FF", "G": "FF", "B": "FF", "L": "FF"},
+        "hex_color": "#A86F01FF",
+        "Server": "ColorDNS – Admin Core"
+    },
+    {
+        "RGB_IP": [1, 1, 1, 1],
+        "meta": {"R": "00", "G": "FF", "B": "00", "L": "FF"},
+        "hex_color": "#01FF01FF",
+        "Server": "ColorDNS – GreenNode"
+    },
+    {
+        "RGB_IP": [8, 8, 8, 8],
+        "meta": {"R": "00", "G": "00", "B": "FF", "L": "AA"},
+        "hex_color": "#0000FFAA",
+        "Server": "Fallback – Google DNS"
+    },
+    {
+        "RGB_IP": [94, 140, 14, 14],
+        "meta": {"R": "94", "G": "8C", "B": "0E", "L": "FF"},
+        "hex_color": "#5E8C0EFF",
+        "Server": "AdGuard"
+    },
+    {
+        "RGB_IP": [193, 222, 87, 100],
+        "meta": {"R": "C1", "G": "DE", "B": "57", "L": "64"},
+        "hex_color": "#C1DE5764",
+        "Server": "Anonymous-DNS"
+    },
+    {
+        "RGB_IP": [9, 9, 9, 9],
+        "meta": {"R": "09", "G": "09", "B": "09", "L": "FF"},
+        "hex_color": "#090909FF",
+        "Server": "Quad9"
+    }
+]
+
+# ========== Trusted DNS Loader ==========
+def load_trusted_dns(file_path="trusted_dns_list.txt"):
+    try:
+        with open(file_path, "r") as f:
+            return [line.strip() for line in f if line.strip() and not line.startswith("#")]
+    except Exception as e:
+        print(f"[!] Could not load trusted DNS list: {e}")
+        return []
+
+def print_dns_status_summary(current, trusted_list):
+    if not current:
+        print("[!] No DNS server detected.")
+        return
+    status = "[✓]" if current in trusted_list else "[!]"
+    color = "\033[92m" if current in trusted_list else "\033[91m"
+    print(f"{color}{status} Current DNS: {current} {'(trusted)' if current in trusted_list else '(UNTRUSTED)'}\033[0m")
+
+# ========== Utility Functions ==========
+def get_ip_from_rgb(entry):
+    return f"{entry['RGB_IP'][0]}.{entry['RGB_IP'][1]}.{entry['RGB_IP'][2]}.{entry['RGB_IP'][3]}"
+
+def print_color_tag(hex_color):
+    try:
+        r = int(hex_color[1:3], 16)
+        g = int(hex_color[3:5], 16)
+        b = int(hex_color[5:7], 16)
+        print(f"\033[48;2;{r};{g};{b}m     \033[0m {hex_color}")
+    except:
+        print(hex_color)
+
+def run(cmd, timeout=None):
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        return p.returncode, p.stdout.strip(), p.stderr.strip()
+    except subprocess.TimeoutExpired:
+        return 1, "", "timeout"
+    except Exception as e:
+        return 1, "", str(e)
+
+def have(cmd_name):
+    return which(cmd_name) is not None
+
+def ps(script, timeout=8):
+    return run([POWERSHELL, "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script], timeout=timeout)
+
+def autodetect_interface():
+    rc, out, err = ps("(Get-NetAdapter | Where-Object Status -eq 'Up' | "
+                      "Sort-Object ifIndex | Select-Object -First 1 -ExpandProperty Name)")
+    if rc == 0 and out:
+        return out
+    return None
+
+def test_dns_with_powershell(ip):
+    script = f"$sw=[System.Diagnostics.Stopwatch]::StartNew();" \
+             f"try{{ $r=Resolve-DnsName -Name '{TEST_DOMAIN}' -Type A -Server '{ip}' -DnsOnly -ErrorAction Stop; " \
+             f"$sw.Stop(); [int]$sw.ElapsedMilliseconds }} catch {{ 1/0 }}"
+    rc, out, err = ps(script, timeout=7)
+    if rc == 0 and out.isdigit():
+        return int(out)
+    return float('inf')
+
+def test_icmp(ip):
+    rc, out, err = run(["ping", ip, "-n", "1"], timeout=4)
+    if rc == 0 and "Average =" in out:
+        try:
+            avg = out.split("Average =")[-1].strip()
+            ms = int(avg.replace("ms", "").strip())
+            return ms
+        except:
+            pass
+    return float('inf')
+
+def flush_dns():
+    rc, out, err = run(["ipconfig", "/flushdns"])
+    print("[+] Flushed DNS cache." if rc == 0 else f"[!] Flush failed: {err or out}")
+
+def reset_dns_to_dhcp(iface):
+    rc, out, err = run([
+        "netsh", "interface", "ipv4", "set", "dnsservers",
+        f'name={iface}', "dhcp"
+    ])
+    print(f"[+] DNS reset to DHCP on '{iface}'." if rc == 0 else f"[!] DHCP reset failed: {err or out}")
+
+def set_dns(iface, ip):
+    # First clear any previous static entries
+    run(["netsh", "interface", "ipv4", "set", "dnsservers", f"name={iface}", "source=static", "addr=none"])
+    rc, out, err = run([
+        "netsh", "interface", "ipv4", "set", "dnsservers",
+        f"name={iface}", "static", ip, "primary"
+    ])
+    if rc == 0:
+        print(f"[+] DNS set to {ip} on '{iface}'.")
+        return True
+    print(f"[!] Failed to set DNS: {err or out}")
+    return False
+
+def current_dns(iface):
+    rc, out, err = run(["netsh", "interface", "ipv4", "show", "dnsservers"])
+    if rc != 0: return None
+    lines = out.splitlines()
+    capture = False
+    for i, line in enumerate(lines):
+        if iface.strip('"') in line:
+            capture = True
+            continue
+        if capture:
+            line = line.strip()
+            if line and line[0].isdigit():
+                return line.split()[0]
+            if "Register" in line:
+                break
+    return None
+
+# ========== Main Loop ==========
+def main():
+    if not have(POWERSHELL):
+        print(f"[!] '{POWERSHELL}' not found. Install PowerShell or set POWERSHELL to a valid executable.")
+        sys.exit(1)
+
+    iface = f'"{NETWORK_INTERFACE}"' if NETWORK_INTERFACE else None
+    if iface is None:
+        detected = autodetect_interface()
+        if detected:
+            iface = f'"{detected}"'
+            print(f"[*] Auto-detected interface: {detected}")
+        else:
+            print("[!] Could not auto-detect an active network interface. Set NETWORK_INTERFACE manually.")
+            sys.exit(1)
+
+    # VPN detection
+    vpn_keywords = ["nord", "openvpn", "wireguard", "express", "surfshark", "tunnel", "lynx", "proton"]
+    if any(k in iface.lower() for k in vpn_keywords):
+        print(f"[!] Warning: Interface '{iface}' appears to be a VPN. DNS switching may be limited or overridden.")
+
+    print("[*] IPvTri+ Auto DNS Switcher is running. Press Ctrl+C to stop.")
+
+    while True:
+        try:
+            print("\n[=== Testing DNS Servers ===]")
+            fastest = None
+            fastest_time = float('inf')
+            per_server_times = []
+
+            for d in dns_servers:
+                ip = get_ip_from_rgb(d)
+                print_color_tag(d["hex_color"])
+                print(f" - Testing {d['Server']} ({ip}) ...", end="", flush=True)
+                t = test_dns_with_powershell(ip)
+                if t == float('inf'):
+                    print(" FAIL")
+                else:
+                    print(f" {t} ms")
+                    per_server_times.append((d, t))
+                    if t < fastest_time:
+                        fastest_time = t
+                        fastest = d
+
+            if all(t == float('inf') for _, t in per_server_times):
+                print("[!] DNS lookups failing. Trying ICMP fallback...")
+                fastest_time = float('inf')
+                fastest = None
+                for d in dns_servers:
+                    ip = get_ip_from_rgb(d)
+                    print(f"   · PING {d['Server']} ({ip}) ...", end="", flush=True)
+                    t = test_icmp(ip)
+                    if t == float('inf'):
+                        print(" FAIL")
+                    else:
+                        print(f" {t} ms")
+                        if t < fastest_time:
+                            fastest_time = t
+                            fastest = d
+
+            if not fastest or fastest_time == float('inf'):
+                print("[!] No responsive DNS servers found. Sleeping...")
+                time.sleep(CHECK_INTERVAL_SEC)
+                continue
+
+            ip = get_ip_from_rgb(fastest)
+            print(f"\n[>>] Fastest: {ip} – {fastest['Server']} ({fastest_time} ms)")
+            cur = current_dns(iface)
+
+            # Trusted DNS check
+            trusted_dns_list = load_trusted_dns()
+            print_dns_status_summary(cur, trusted_dns_list)
+            if cur and cur.startswith("192.168"):
+                print("[!] Warning: Local router DNS detected. This may leak traffic outside the VPN tunnel.")
+            if cur and cur.startswith("10."):
+                print("[!] VPN DNS detected (10.x.x.x). Confirm if it's your trusted VPN provider.")
+
+            if cur == ip:
+                print("[=] Already using the fastest server.")
+                flush_dns()
+            else:
+                reset_dns_to_dhcp(iface)
+                if set_dns(iface, ip):
+                    flush_dns()
+
+            print(f"[*] Sleeping {CHECK_INTERVAL_SEC // 60} minutes...\n")
+            time.sleep(CHECK_INTERVAL_SEC)
+
+        except KeyboardInterrupt:
+            print("\n[!] Interrupted by user. Exiting.")
+            sys.exit(0)
+        except Exception as e:
+            print(f"[!] Unexpected error: {e}")
+            time.sleep(5)
+
+if __name__ == "__main__":
+    main()
+```
+
+---
+
+This is the **v1.2 FINAL** build with:
+
+* VPN detection ✅
+* Trusted DNS config & visual monitor ✅
+* DNS cleanup before setting ✅
+* ICMP fallback ✅
+* IPvTri+ color-coded nodes ✅
+
+Do you want me to also give you a **minimal `trusted_dns_list.txt` template** here inline, so you don’t need to download it separately?
